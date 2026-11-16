@@ -45,17 +45,31 @@ Star schema: `fact_order_line`, `fact_ads_daily`; dimensions `dim_date`, `dim_pr
 
 ## Run it
 
-Requirements: Python 3.12+, MySQL 8.4, `pip install pymysql`.
+**Option A, no database needed (DuckDB):**
 
 ```bash
-python generate_data.py --out data/raw_fr          # synthetic CSVs
-# create database lumi_dw and a user, then export MYSQL_PWD (the script never stores a password)
-python build_dw.py --raw data/raw_fr               # load, clean, model, run checks
-python dashboard/export_dashboard_data.py          # aggregates -> dashboard/data.json
-python dashboard/build.py                          # -> site/index.html
+pip install duckdb
+python generate_data.py --out data/raw_fr                      # synthetic CSVs (seed 42)
+python build_dw_duckdb.py --raw data/raw_fr                    # staging -> star schema -> quality checks (about 2 s)
+python dashboard/export_dashboard_data.py --engine duckdb --db data/lumi.duckdb
+python dashboard/build.py                                      # -> site/index.html
+python tests/test_duckdb_parity.py                             # known totals must match to the cent
 ```
 
+**Option B, MySQL 8.4** (the original warehouse, also used by the Power BI model): `pip install pymysql`, create database `lumi_dw` and a user, export `MYSQL_PWD` (nothing stores a password), then `python build_dw.py --raw data/raw_fr` and `python dashboard/export_dashboard_data.py`.
+
 Open `site/index.html` in any browser. It works offline.
+
+## What else is in the repo
+
+| Folder | Contents |
+|---|---|
+| `sql/` | 8 analysis queries (CTEs, window functions): KPIs, SKU profit, campaign ROAS, event uplift, cohort retention, RFM, repeat rate, returns. Results reconciled with the dashboard. |
+| `docs/erd.md`, `docs/data-dictionary.md` | Entity-relationship diagram (Mermaid) and a column-level dictionary with units (EUR, excl./incl. VAT, UTC/Paris) |
+| `powerbi/` | DAX measures, a step-by-step Power BI Desktop setup and an **untested** TMDL semantic model (see `powerbi/README.md` for status) |
+| `tests/` | DuckDB build checked against the MySQL build (0 differing rows, known totals to the cent) |
+
+Related project on **real** data: [Online-Retail-Insights](https://github.com/Corgi-coder99/Online-Retail-Insights) (UCI Online Retail II: cleaning log, RFM, cohorts, backtested forecasts, auto-generated insights).
 
 ## Limitations
 
@@ -67,3 +81,11 @@ Open `site/index.html` in any browser. It works offline.
 ## Documentation
 
 `docs/00-requirements-filtered.md` (project scope), `docs/10-dashboard-spec.md` (Power BI model and DAX measures), `docs/assumptions-log.md` (13 numbered assumptions), `docs/market-fr/sources.md` (public sources, confidence levels).
+
+## Résumé en français
+
+Projet d'analyse e-commerce sur une boutique **fictive** d'accessoires de mode en France (Amazon.fr, Temu, Shein, TikTok Shop, Cdiscount, boutique en ligne ; publicité Meta, TikTok, Google). Les données sont **synthétiques**, générées par script ; les tendances (références déficitaires, campagne déficitaire, sur-déclaration d'une plateforme publicitaire) ont été injectées volontairement pour tester l'analyse et ne sont pas des constats sur le marché réel. Le pipeline charge des exports hétérogènes dans un schéma en étoile (MySQL ou DuckDB), gère la TVA (prix TTC, CA analysé HT) et l'heure de Paris, rapproche les lignes par canal, puis alimente un tableau de bord HTML autonome (`site/index.html`). Aucune marketplace n'a été scrapée. Pour une analyse sur données réelles, voir [Online-Retail-Insights](https://github.com/Corgi-coder99/Online-Retail-Insights).
+
+## License
+
+MIT, see `LICENSE`.

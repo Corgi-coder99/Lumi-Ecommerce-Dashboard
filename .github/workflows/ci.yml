@@ -1,0 +1,23 @@
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  duckdb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install duckdb
+      - name: Generate synthetic data (seed 42)
+        run: python -I generate_data.py --out data/raw_fr
+      - name: Build warehouse in DuckDB and compare with the MySQL reference
+        run: python -I tests/test_duckdb_parity.py
+      - name: Export aggregates and build the dashboard
+        run: |
+          python -I build_dw_duckdb.py --raw data/raw_fr --db data/lumi.duckdb
+          python -I dashboard/export_dashboard_data.py --engine duckdb --db data/lumi.duckdb
+          python -I dashboard/build.py

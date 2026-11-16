@@ -1,0 +1,322 @@
+// =============================================================================
+// Lumi Accessories France - DAX for Power BI (model: MySQL lumi_dw, Import mode)
+// Copy-paste ready. Table and column names match build_dw.py (French-market schema).
+//
+// HOW TO USE
+//   1. Calculated columns (section A): Table view > select the table > New column > paste ONE block.
+//   2. Create an empty table named _Measures (Home > Enter data > name it, load) and hide its column.
+//   3. Measures (section B): select _Measures > New measure > paste ONE block.
+//      Then set Format and Display folder in Measure tools (given in each header line).
+//   4. Optional helper objects (section C).
+//
+// Each block starts with a header line "//@ ..." (used by tooling and by you: folder / format),
+// then a one-line comment, then the DAX. Blocks are separated by a blank line.
+// Money: EUR. Revenue = excl. VAT (HT). Only status = "completed" counts as revenue.
+// =============================================================================
+
+
+// ============================ A. CALCULATED COLUMNS ===========================
+
+//@ column | table=dim_customer | type=int64 | format=0 | hidden
+// Date key (yyyymmdd) of the customer's first order; used by the INACTIVE relationship to dim_date.
+first_date_key =
+YEAR ( dim_customer[first_order_date] ) * 10000
+    + MONTH ( dim_customer[first_order_date] ) * 100
+    + DAY ( dim_customer[first_order_date] )
+
+//@ column | table=dim_customer | type=dateTime | format=mmm yyyy
+// First day of the month of the first order = cohort month (matrix rows on the Customers page).
+first_month =
+DATE ( YEAR ( dim_customer[first_order_date] ), MONTH ( dim_customer[first_order_date] ), 1 )
+
+//@ column | table=dim_customer | type=string
+// Region with NULL shown as "Unknown" (Revenue by region bar chart).
+region_label =
+IF ( ISBLANK ( dim_customer[region] ) || dim_customer[region] = "", "Unknown", dim_customer[region] )
+
+//@ column | table=fact_order_line | type=dateTime | format=General Date | hidden
+// Paris local calendar date of the order line (via the active date relationship).
+order_date =
+RELATED ( dim_date[full_date] )
+
+//@ column | table=fact_order_line | type=int64 | format=0
+// Whole months between the customer's first month and the order month (0 = first month). Cohort matrix columns.
+months_since_first =
+DATEDIFF (
+    RELATED ( dim_customer[first_month] ),
+    DATE ( YEAR ( fact_order_line[order_date] ), MONTH ( fact_order_line[order_date] ), 1 ),
+    MONTH
+)
+
+//@ column | table=dim_date | type=dateTime | format=mmm yyyy
+// First day of the month of each date: use as the X axis for "by month" charts so months sort correctly.
+month_start =
+DATE ( dim_date[year], dim_date[month], 1 )
+
+
+// ================================ B. MEASURES =================================
+
+// ---- Sales ------------------------------------------------------------------
+
+//@ measure | folder=Sales | format=€ #,##0
+// Net revenue excl. VAT (net_ht) of completed order lines. Headline revenue number.
+Revenue =
+CALCULATE ( SUM ( fact_order_line[net_ht] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Sales | format=€ #,##0
+// Net revenue incl. VAT (net_ttc, after discounts) of completed lines. What customers actually paid.
+Revenue TTC =
+CALCULATE ( SUM ( fact_order_line[net_ttc] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Sales | format=€ #,##0
+// VAT collected (20%) on completed lines: Revenue TTC - Revenue.
+VAT Collected =
+CALCULATE ( SUM ( fact_order_line[vat_amount] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Sales | format=€ #,##0
+// GMV: gross value incl. VAT BEFORE discounts (gross_ttc) of completed lines.
+Gross Merchandise Value =
+CALCULATE ( SUM ( fact_order_line[gross_ttc] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Sales | format=#,##0
+// Distinct completed orders.
+Orders =
+CALCULATE ( DISTINCTCOUNT ( fact_order_line[order_id] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Sales | format=#,##0
+// Units sold on completed lines.
+Units =
+CALCULATE ( SUM ( fact_order_line[qty] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Sales | format=#,##0.00 €
+// Average order value excl. VAT = Revenue / Orders.
+AOV =
+DIVIDE ( [Revenue], [Orders] )
+
+//@ measure | folder=Sales | format=0.0%
+// Share of returned lines among completed + returned lines (line-based, not order-based).
+Return Rate =
+DIVIDE (
+    CALCULATE ( COUNTROWS ( fact_order_line ), fact_order_line[status] = "returned" ),
+    CALCULATE ( COUNTROWS ( fact_order_line ), fact_order_line[status] IN { "completed", "returned" } )
+)
+
+//@ measure | folder=Sales | format=0.0%
+// Share of cancelled lines among all lines in the current filter context.
+Cancel Rate =
+DIVIDE (
+    CALCULATE ( COUNTROWS ( fact_order_line ), fact_order_line[status] = "cancelled" ),
+    COUNTROWS ( fact_order_line )
+)
+
+// ---- Profit -----------------------------------------------------------------
+
+//@ measure | folder=Profit | format=€ #,##0
+// Marketplace commission (platform_fee) on completed lines; treated as excl. VAT.
+Platform Fee =
+CALCULATE ( SUM ( fact_order_line[platform_fee] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Profit | format=€ #,##0
+// Cost of goods sold (qty x unit_cost_ht) on completed lines.
+COGS =
+CALCULATE ( SUM ( fact_order_line[cogs] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Profit | format=€ #,##0
+// Gross Profit (before ads) = Revenue - Platform Fee - COGS.
+Gross Profit =
+[Revenue] - [Platform Fee] - [COGS]
+
+//@ measure | folder=Profit | format=0.0%
+// Gross Profit / Revenue.
+Gross Margin % =
+DIVIDE ( [Gross Profit], [Revenue] )
+
+//@ measure | folder=Profit | format=€ #,##0
+// Net Profit = Gross Profit - Ad Spend (ads are excl. VAT).
+Net Profit =
+[Gross Profit] - [Ad Spend]
+
+//@ measure | folder=Profit | format=0.0%
+// Net Profit / Revenue.
+Net Margin % =
+DIVIDE ( [Net Profit], [Revenue] )
+
+//@ measure | folder=Profit | format=0.00
+// Return on ad spend in profit terms = Net Profit / Ad Spend.
+ROI =
+DIVIDE ( [Net Profit], [Ad Spend] )
+
+// ---- Advertising ------------------------------------------------------------
+
+//@ measure | folder=Advertising | format=€ #,##0
+// Ad spend excl. VAT (Meta + TikTok + Google). Not linked to orders: compare with revenue by day only.
+Ad Spend =
+SUM ( fact_ads_daily[spend] )
+
+//@ measure | folder=Advertising | format=#,##0
+// Clicks reported by the ad platforms.
+Clicks =
+SUM ( fact_ads_daily[clicks] )
+
+//@ measure | folder=Advertising | format=#,##0
+// Impressions reported by the ad platforms.
+Impressions =
+SUM ( fact_ads_daily[impressions] )
+
+//@ measure | folder=Advertising | format=€ #,##0
+// Conversion value INCL. VAT (TTC) as self-reported by the ad platforms (inflated, e.g. Meta ~30%).
+Platform Conversion Value (TTC) =
+SUM ( fact_ads_daily[platform_conv_value] )
+
+//@ measure | folder=Advertising | format=0.00
+// Blended ROAS = real Revenue (HT, all channels) / Ad Spend (HT). The trustworthy ROAS.
+// Only meaningful with no ads-channel/campaign filter: revenue cannot be attributed to a campaign.
+Blended ROAS =
+DIVIDE ( [Revenue], [Ad Spend] )
+
+//@ measure | folder=Advertising | format=0.00
+// Platform ROAS = platform-reported conversion value (TTC, self-reported) / Ad Spend (HT). Higher than Blended partly because TTC vs HT (20%).
+Platform ROAS =
+DIVIDE ( SUM ( fact_ads_daily[platform_conv_value] ), [Ad Spend] )
+
+//@ measure | folder=Advertising | format=0.0%
+// CIR (cost-income ratio) = Ad Spend / Revenue. Inverse of Blended ROAS.
+CIR =
+DIVIDE ( [Ad Spend], [Revenue] )
+
+//@ measure | folder=Advertising | format=#,##0.00 €
+// Cost per order = Ad Spend / completed Orders (blended, all channels).
+CPO =
+DIVIDE ( [Ad Spend], [Orders] )
+
+//@ measure | folder=Advertising | format=#,##0.00 €
+// Cost per click = Ad Spend / Clicks.
+CPC =
+DIVIDE ( [Ad Spend], SUM ( fact_ads_daily[clicks] ) )
+
+//@ measure | folder=Advertising | format=0.0%
+// Click-through rate = Clicks / Impressions.
+CTR =
+DIVIDE ( SUM ( fact_ads_daily[clicks] ), SUM ( fact_ads_daily[impressions] ) )
+
+//@ measure | folder=Advertising | format=0.0%
+// Ads conversion rate = platform-reported conversions / Clicks.
+Ads CVR =
+DIVIDE ( SUM ( fact_ads_daily[platform_conversions] ), SUM ( fact_ads_daily[clicks] ) )
+
+// ---- Customers --------------------------------------------------------------
+
+//@ measure | folder=Customers | format=#,##0
+// Distinct customers with at least one completed order.
+Customers =
+CALCULATE ( DISTINCTCOUNT ( fact_order_line[customer_key] ), fact_order_line[status] = "completed" )
+
+//@ measure | folder=Customers | format=#,##0
+// Customers whose FIRST order falls in the selected dates (uses the inactive dim_customer[first_date_key] -> dim_date[date_key]).
+New Customers =
+CALCULATE (
+    COUNTROWS ( dim_customer ),
+    USERELATIONSHIP ( dim_customer[first_date_key], dim_date[date_key] )
+)
+
+//@ measure | folder=Customers | format=#,##0.00 €
+// Blended CAC = total Ad Spend / New Customers (all ads, all new customers), dates matched by first-order date.
+CAC =
+DIVIDE (
+    [Ad Spend],
+    CALCULATE (
+        COUNTROWS ( dim_customer ),
+        USERELATIONSHIP ( dim_customer[first_date_key], dim_date[date_key] )
+    )
+)
+
+//@ measure | folder=Customers | format=0.0%
+// Share of customers with 2 or more completed orders.
+Repeat Rate =
+VAR RepeatCustomers =
+    SUMX (
+        VALUES ( fact_order_line[customer_key] ),
+        IF (
+            CALCULATE ( DISTINCTCOUNT ( fact_order_line[order_id] ), fact_order_line[status] = "completed" ) >= 2,
+            1,
+            0
+        )
+    )
+RETURN
+    DIVIDE ( RepeatCustomers, [Customers] )
+
+//@ measure | folder=Customers | format=0.0%
+// Cohort retention: active customers in the cell / customers active in month 0 of the cohort. Use first_month x months_since_first.
+Retention % =
+VAR CohortBase =
+    CALCULATE (
+        DISTINCTCOUNT ( fact_order_line[customer_key] ),
+        fact_order_line[months_since_first] = 0,
+        fact_order_line[status] = "completed"
+    )
+RETURN
+    DIVIDE (
+        CALCULATE ( DISTINCTCOUNT ( fact_order_line[customer_key] ), fact_order_line[status] = "completed" ),
+        CohortBase
+    )
+
+// ---- Time and events --------------------------------------------------------
+
+//@ measure | folder=Time and events | format=€ #,##0
+// Revenue of the previous month (needs dim_date marked as date table; use on a date/month axis).
+Revenue PM =
+CALCULATE ( [Revenue], DATEADD ( dim_date[full_date], -1, MONTH ) )
+
+//@ measure | folder=Time and events | format=0.0%
+// Month-over-month change in Revenue.
+Revenue MoM % =
+DIVIDE ( [Revenue] - [Revenue PM], [Revenue PM] )
+
+//@ measure | folder=Time and events | format=0.0%
+// Average daily revenue on sale-event days vs normal days, minus 1 (event_name from calendar_events; blank = normal day).
+Event Day Uplift =
+VAR EventAvg =
+    CALCULATE (
+        AVERAGEX ( VALUES ( dim_date[full_date] ), [Revenue] ),
+        NOT ( ISBLANK ( dim_date[event_name] ) )
+    )
+VAR NormalAvg =
+    CALCULATE (
+        AVERAGEX ( VALUES ( dim_date[full_date] ), [Revenue] ),
+        ISBLANK ( dim_date[event_name] )
+    )
+RETURN
+    DIVIDE ( EventAvg, NormalAvg ) - 1
+
+//@ measure | folder=Time and events | format=€ #,##0
+// Revenue only on event days (blank otherwise): add as a column series behind the daily line to mark sale periods.
+Event Revenue Marker =
+IF ( NOT ISBLANK ( SELECTEDVALUE ( dim_date[event_name] ) ), [Revenue] )
+
+
+// ============================ C. OPTIONAL HELPERS =============================
+
+//@ table | name=waterfall_steps | type=calculated
+// Disconnected table feeding the waterfall chart (Products page). New table > paste.
+waterfall_steps =
+DATATABLE (
+    "Step", STRING,
+    "StepOrder", INTEGER,
+    {
+        { "Revenue", 1 },
+        { "Platform fee", 2 },
+        { "COGS", 3 },
+        { "Ad spend", 4 }
+    }
+)
+
+//@ measure | folder=Helpers | format=€ #,##0
+// Signed value per waterfall step (revenue positive, costs negative). Power BI adds the final "Total" bar = Net Profit.
+Waterfall Value =
+SWITCH (
+    SELECTEDVALUE ( waterfall_steps[Step] ),
+    "Revenue", [Revenue],
+    "Platform fee", -[Platform Fee],
+    "COGS", -[COGS],
+    "Ad spend", -[Ad Spend]
+)

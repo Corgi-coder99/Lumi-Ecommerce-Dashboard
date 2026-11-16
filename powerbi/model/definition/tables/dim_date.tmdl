@@ -1,0 +1,76 @@
+table dim_date
+	dataCategory: Time
+
+	column date_key
+		dataType: int64
+		formatString: 0
+		isHidden
+		summarizeBy: none
+		sourceColumn: date_key
+
+	column full_date
+		dataType: dateTime
+		formatString: Long Date
+		isKey
+		summarizeBy: none
+		sourceColumn: full_date
+
+	column year
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: year
+
+	column month
+		dataType: int64
+		formatString: 0
+		isHidden
+		summarizeBy: none
+		sourceColumn: month
+
+	column month_name
+		dataType: string
+		sortByColumn: month
+		summarizeBy: none
+		sourceColumn: month_name
+
+	column day
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: day
+
+	column weekday
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: weekday
+
+	column is_weekend
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: is_weekend
+
+	column event_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: event_name
+
+	/// First day of the month of each date: use as the X axis for "by month" charts so months sort correctly.
+	column month_start =
+			DATE ( dim_date[year], dim_date[month], 1 )
+		dataType: dateTime
+		formatString: mmm yyyy
+		summarizeBy: none
+
+	partition dim_date = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="dim_date"]}[Data]
+				in
+					Data
+
+	annotation TODO_verify = dataCategory Time plus isKey on full_date (equals Mark as date table) not tested; if Desktop rejects, remove them and mark the date table in the UI

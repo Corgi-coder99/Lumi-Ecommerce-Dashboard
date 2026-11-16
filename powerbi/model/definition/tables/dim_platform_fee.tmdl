@@ -1,0 +1,27 @@
+table dim_platform_fee
+
+	column platform
+		dataType: string
+		summarizeBy: none
+		sourceColumn: platform
+
+	column category
+		dataType: string
+		summarizeBy: none
+		sourceColumn: category
+
+	column commission_rate
+		dataType: decimal
+		formatString: 0.0%
+		summarizeBy: none
+		sourceColumn: commission_rate
+
+	partition dim_platform_fee = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="dim_platform_fee"]}[Data]
+				in
+					Data
+

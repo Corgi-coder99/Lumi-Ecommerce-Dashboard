@@ -1,0 +1,27 @@
+table dim_platform
+
+	column platform
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: platform
+
+	column display_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: display_name
+
+	column channel_type
+		dataType: string
+		summarizeBy: none
+		sourceColumn: channel_type
+
+	partition dim_platform = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="dim_platform"]}[Data]
+				in
+					Data
+

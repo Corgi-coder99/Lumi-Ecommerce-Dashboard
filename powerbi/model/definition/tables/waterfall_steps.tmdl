@@ -1,0 +1,27 @@
+table waterfall_steps
+
+	column Step
+		dataType: string
+		summarizeBy: none
+		sourceColumn: Step
+
+	column StepOrder
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: StepOrder
+
+	partition waterfall_steps = calculated
+		mode: import
+		source =
+				DATATABLE (
+					"Step", STRING,
+					"StepOrder", INTEGER,
+					{
+						{ "Revenue", 1 },
+						{ "Platform fee", 2 },
+						{ "COGS", 3 },
+						{ "Ad spend", 4 }
+					}
+				)
+
+	annotation TODO_verify = DATATABLE calculated table partition and sortByColumn for Step not tested

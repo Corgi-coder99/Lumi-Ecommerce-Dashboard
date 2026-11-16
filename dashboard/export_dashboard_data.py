@@ -3,24 +3,48 @@
 Chi xuat so tong hop (theo ngay, kenh, SKU, thang, vung, cohort). KHONG xuat ma khach hang, khong xuat dong don le.
 Ket noi: 127.0.0.1, user lumi, mat khau tu bien moi truong MYSQL_PWD.
 Chay: python -I export_dashboard_data.py
+Khong co MySQL: python -I export_dashboard_data.py --engine duckdb --db data/lumi.duckdb [--out duong_dan.json]
 """
+import argparse
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
-
-import pymysql
 
 LAST_DAY = 20261115  # quang cao dung o 15/11; ngay 16/11 chi co vai gio cuoi do doi gio UTC sang Paris
 OUT = Path(__file__).parent / "data.json"
 
 
 def connect():
+    import pymysql
     pwd = os.environ.get("MYSQL_PWD")
     if not pwd:
         sys.exit("Thieu bien moi truong MYSQL_PWD")
     return pymysql.connect(host="127.0.0.1", user="lumi", password=pwd, database="lumi_dw", charset="utf8mb4")
+
+
+class DuckCursor:
+    """Boc ket noi DuckDB thanh giao dien giong cursor pymysql; doi cu phap MySQL sang DuckDB."""
+
+    def __init__(self, con):
+        self.con = con
+        self.res = None
+
+    @staticmethod
+    def translate(sql):
+        sql = sql.replace("%%", "%").replace("%s", "?")
+        sql = re.sub(r"FIELD\((\w+),((?:'[^']*',?)+)\)", lambda m: f"list_position([{m.group(2)}], {m.group(1)})", sql)
+        sql = sql.replace("DATE_FORMAT(", "strftime(")
+        sql = re.sub(r"SUM\(([\w.]+)='(\w+)'\)", lambda m: "SUM(CASE WHEN " + m.group(1) + "='" + m.group(2) + "' THEN 1 ELSE 0 END)", sql)
+        return sql
+
+    def execute(self, sql, args=None):
+        self.res = self.con.execute(self.translate(sql), list(args) if args else [])
+
+    def fetchall(self):
+        return self.res.fetchall()
 
 
 def q(cur, sql, args=None):
@@ -33,8 +57,19 @@ def f2(x):
 
 
 def main():
-    conn = connect()
-    cur = conn.cursor()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--engine", choices=["mysql", "duckdb"], default="mysql")
+    ap.add_argument("--db", default="data/lumi.duckdb", help="file DuckDB (chi dung voi --engine duckdb)")
+    ap.add_argument("--out", default=str(OUT), help="file json dau ra (mac dinh dashboard/data.json)")
+    args = ap.parse_args()
+    out_path = Path(args.out)
+    if args.engine == "duckdb":
+        import duckdb
+        conn = duckdb.connect(args.db, read_only=True)
+        cur = DuckCursor(conn)
+    else:
+        conn = connect()
+        cur = conn.cursor()
 
     platforms = q(cur, "SELECT platform, display_name, channel_type FROM dim_platform ORDER BY FIELD(platform,'amazon_fr','temu','shein','tiktokshop','cdiscount','web')")
     plat_idx = {p[0]: i for i, p in enumerate(platforms)}
@@ -155,8 +190,8 @@ def main():
     for e in data["events"]:
         e["start"] = e["start"].isoformat() if hasattr(e["start"], "isoformat") else str(e["start"])
         e["end"] = e["end"].isoformat() if hasattr(e["end"], "isoformat") else str(e["end"])
-    OUT.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"data.json: {OUT.stat().st_size/1024:.0f} KB; daily={len(daily)} sku_month={len(sku_month)} ads={len(ads)} "
+    out_path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"{out_path.name}: {out_path.stat().st_size/1024:.0f} KB; daily={len(daily)} sku_month={len(sku_month)} ads={len(ads)} "
           f"region={len(region)} customers={total_cust} repeat={repeat_cust}")
 
 

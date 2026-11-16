@@ -1,0 +1,29 @@
+relationship fact_order_line_date
+	fromColumn: fact_order_line.date_key
+	toColumn: dim_date.date_key
+
+relationship fact_order_line_product
+	fromColumn: fact_order_line.sku
+	toColumn: dim_product.sku
+
+relationship fact_order_line_platform
+	fromColumn: fact_order_line.platform
+	toColumn: dim_platform.platform
+
+relationship fact_order_line_customer
+	fromColumn: fact_order_line.customer_key
+	toColumn: dim_customer.customer_key
+
+relationship fact_ads_daily_date
+	fromColumn: fact_ads_daily.date_key
+	toColumn: dim_date.date_key
+
+relationship fact_ads_daily_campaign
+	fromColumn: fact_ads_daily.campaign
+	toColumn: dim_campaign.campaign
+
+relationship dim_customer_first_date
+	fromColumn: dim_customer.first_date_key
+	toColumn: dim_date.date_key
+	isActive: false
+

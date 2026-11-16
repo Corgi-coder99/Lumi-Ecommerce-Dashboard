@@ -1,0 +1,44 @@
+table dim_product
+
+	column sku
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: sku
+
+	column product_name
+		dataType: string
+		summarizeBy: none
+		sourceColumn: product_name
+
+	column category
+		dataType: string
+		summarizeBy: none
+		sourceColumn: category
+
+	column color
+		dataType: string
+		summarizeBy: none
+		sourceColumn: color
+
+	column list_price_ttc
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: list_price_ttc
+
+	column unit_cost_ht
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: unit_cost_ht
+
+	partition dim_product = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="dim_product"]}[Data]
+				in
+					Data
+

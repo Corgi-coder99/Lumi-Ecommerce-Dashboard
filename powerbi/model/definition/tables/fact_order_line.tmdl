@@ -1,0 +1,133 @@
+table fact_order_line
+
+	column line_id
+		dataType: int64
+		formatString: 0
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: line_id
+
+	column order_id
+		dataType: string
+		summarizeBy: none
+		sourceColumn: order_id
+
+	column platform
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: platform
+
+	column order_ts_utc
+		dataType: dateTime
+		formatString: General Date
+		summarizeBy: none
+		sourceColumn: order_ts_utc
+
+	column order_ts_local
+		dataType: dateTime
+		formatString: General Date
+		summarizeBy: none
+		sourceColumn: order_ts_local
+
+	column date_key
+		dataType: int64
+		formatString: 0
+		isHidden
+		summarizeBy: none
+		sourceColumn: date_key
+
+	column sku
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: sku
+
+	column customer_key
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: customer_key
+
+	column qty
+		dataType: int64
+		formatString: #,##0
+		summarizeBy: none
+		sourceColumn: qty
+
+	column gross_ttc
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: gross_ttc
+
+	column discount_ttc
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: discount_ttc
+
+	column net_ttc
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: net_ttc
+
+	column vat_amount
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: vat_amount
+
+	column net_ht
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: net_ht
+
+	column platform_fee
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: platform_fee
+
+	column cogs
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: cogs
+
+	column status
+		dataType: string
+		summarizeBy: none
+		sourceColumn: status
+
+	/// Paris local calendar date of the order line (via the active date relationship).
+	column order_date =
+			RELATED ( dim_date[full_date] )
+		dataType: dateTime
+		formatString: General Date
+		isHidden
+		summarizeBy: none
+
+	/// Whole months between the customer's first month and the order month (0 = first month). Cohort matrix columns.
+	column months_since_first =
+			DATEDIFF (
+				RELATED ( dim_customer[first_month] ),
+				DATE ( YEAR ( fact_order_line[order_date] ), MONTH ( fact_order_line[order_date] ), 1 ),
+				MONTH
+			)
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+
+	partition fact_order_line = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="fact_order_line"]}[Data]
+				in
+					Data
+

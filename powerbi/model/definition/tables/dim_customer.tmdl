@@ -1,0 +1,57 @@
+table dim_customer
+
+	column customer_key
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: customer_key
+
+	column region
+		dataType: string
+		summarizeBy: none
+		sourceColumn: region
+
+	column first_order_date
+		dataType: dateTime
+		formatString: Short Date
+		summarizeBy: none
+		sourceColumn: first_order_date
+
+	column first_platform
+		dataType: string
+		summarizeBy: none
+		sourceColumn: first_platform
+
+	/// Date key (yyyymmdd) of the customer's first order; used by the INACTIVE relationship to dim_date.
+	column first_date_key =
+			YEAR ( dim_customer[first_order_date] ) * 10000
+				+ MONTH ( dim_customer[first_order_date] ) * 100
+				+ DAY ( dim_customer[first_order_date] )
+		dataType: int64
+		formatString: 0
+		isHidden
+		summarizeBy: none
+
+	/// First day of the month of the first order = cohort month (matrix rows on the Customers page).
+	column first_month =
+			DATE ( YEAR ( dim_customer[first_order_date] ), MONTH ( dim_customer[first_order_date] ), 1 )
+		dataType: dateTime
+		formatString: mmm yyyy
+		summarizeBy: none
+
+	/// Region with NULL shown as "Unknown" (Revenue by region bar chart).
+	column region_label =
+			IF ( ISBLANK ( dim_customer[region] ) || dim_customer[region] = "", "Unknown", dim_customer[region] )
+		dataType: string
+		summarizeBy: none
+
+	partition dim_customer = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="dim_customer"]}[Data]
+				in
+					Data
+

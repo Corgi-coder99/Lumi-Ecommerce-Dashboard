@@ -1,0 +1,287 @@
+table _Measures
+
+	column Dummy
+		dataType: int64
+		isHidden
+		summarizeBy: none
+		sourceColumn: Dummy
+
+	/// Net revenue excl. VAT (net_ht) of completed order lines. Headline revenue number.
+	measure Revenue =
+			CALCULATE ( SUM ( fact_order_line[net_ht] ), fact_order_line[status] = "completed" )
+		formatString: € #,##0
+		displayFolder: Sales
+
+	/// Net revenue incl. VAT (net_ttc, after discounts) of completed lines. What customers actually paid.
+	measure 'Revenue TTC' =
+			CALCULATE ( SUM ( fact_order_line[net_ttc] ), fact_order_line[status] = "completed" )
+		formatString: € #,##0
+		displayFolder: Sales
+
+	/// VAT collected (20%) on completed lines: Revenue TTC - Revenue.
+	measure 'VAT Collected' =
+			CALCULATE ( SUM ( fact_order_line[vat_amount] ), fact_order_line[status] = "completed" )
+		formatString: € #,##0
+		displayFolder: Sales
+
+	/// GMV: gross value incl. VAT BEFORE discounts (gross_ttc) of completed lines.
+	measure 'Gross Merchandise Value' =
+			CALCULATE ( SUM ( fact_order_line[gross_ttc] ), fact_order_line[status] = "completed" )
+		formatString: € #,##0
+		displayFolder: Sales
+
+	/// Distinct completed orders.
+	measure Orders =
+			CALCULATE ( DISTINCTCOUNT ( fact_order_line[order_id] ), fact_order_line[status] = "completed" )
+		formatString: #,##0
+		displayFolder: Sales
+
+	/// Units sold on completed lines.
+	measure Units =
+			CALCULATE ( SUM ( fact_order_line[qty] ), fact_order_line[status] = "completed" )
+		formatString: #,##0
+		displayFolder: Sales
+
+	/// Average order value excl. VAT = Revenue / Orders.
+	measure AOV =
+			DIVIDE ( [Revenue], [Orders] )
+		formatString: #,##0.00 €
+		displayFolder: Sales
+
+	/// Share of returned lines among completed + returned lines (line-based, not order-based).
+	measure 'Return Rate' =
+			DIVIDE (
+				CALCULATE ( COUNTROWS ( fact_order_line ), fact_order_line[status] = "returned" ),
+				CALCULATE ( COUNTROWS ( fact_order_line ), fact_order_line[status] IN { "completed", "returned" } )
+			)
+		formatString: 0.0%
+		displayFolder: Sales
+
+	/// Share of cancelled lines among all lines in the current filter context.
+	measure 'Cancel Rate' =
+			DIVIDE (
+				CALCULATE ( COUNTROWS ( fact_order_line ), fact_order_line[status] = "cancelled" ),
+				COUNTROWS ( fact_order_line )
+			)
+		formatString: 0.0%
+		displayFolder: Sales
+
+	/// Marketplace commission (platform_fee) on completed lines; treated as excl. VAT.
+	measure 'Platform Fee' =
+			CALCULATE ( SUM ( fact_order_line[platform_fee] ), fact_order_line[status] = "completed" )
+		formatString: € #,##0
+		displayFolder: Profit
+
+	/// Cost of goods sold (qty x unit_cost_ht) on completed lines.
+	measure COGS =
+			CALCULATE ( SUM ( fact_order_line[cogs] ), fact_order_line[status] = "completed" )
+		formatString: € #,##0
+		displayFolder: Profit
+
+	/// Gross Profit (before ads) = Revenue - Platform Fee - COGS.
+	measure 'Gross Profit' =
+			[Revenue] - [Platform Fee] - [COGS]
+		formatString: € #,##0
+		displayFolder: Profit
+
+	/// Gross Profit / Revenue.
+	measure 'Gross Margin %' =
+			DIVIDE ( [Gross Profit], [Revenue] )
+		formatString: 0.0%
+		displayFolder: Profit
+
+	/// Net Profit = Gross Profit - Ad Spend (ads are excl. VAT).
+	measure 'Net Profit' =
+			[Gross Profit] - [Ad Spend]
+		formatString: € #,##0
+		displayFolder: Profit
+
+	/// Net Profit / Revenue.
+	measure 'Net Margin %' =
+			DIVIDE ( [Net Profit], [Revenue] )
+		formatString: 0.0%
+		displayFolder: Profit
+
+	/// Return on ad spend in profit terms = Net Profit / Ad Spend.
+	measure ROI =
+			DIVIDE ( [Net Profit], [Ad Spend] )
+		formatString: 0.00
+		displayFolder: Profit
+
+	/// Ad spend excl. VAT (Meta + TikTok + Google). Not linked to orders: compare with revenue by day only.
+	measure 'Ad Spend' =
+			SUM ( fact_ads_daily[spend] )
+		formatString: € #,##0
+		displayFolder: Advertising
+
+	/// Clicks reported by the ad platforms.
+	measure Clicks =
+			SUM ( fact_ads_daily[clicks] )
+		formatString: #,##0
+		displayFolder: Advertising
+
+	/// Impressions reported by the ad platforms.
+	measure Impressions =
+			SUM ( fact_ads_daily[impressions] )
+		formatString: #,##0
+		displayFolder: Advertising
+
+	/// Conversion value INCL. VAT (TTC) as self-reported by the ad platforms (inflated, e.g. Meta ~30%).
+	measure 'Platform Conversion Value (TTC)' =
+			SUM ( fact_ads_daily[platform_conv_value] )
+		formatString: € #,##0
+		displayFolder: Advertising
+
+	/// Blended ROAS = real Revenue (HT, all channels) / Ad Spend (HT). The trustworthy ROAS. Only meaningful with no ads-channel/campaign filter: revenue cannot be attributed to a campaign.
+	measure 'Blended ROAS' =
+			DIVIDE ( [Revenue], [Ad Spend] )
+		formatString: 0.00
+		displayFolder: Advertising
+
+	/// Platform ROAS = platform-reported conversion value (TTC, self-reported) / Ad Spend (HT). Higher than Blended partly because TTC vs HT (20%).
+	measure 'Platform ROAS' =
+			DIVIDE ( SUM ( fact_ads_daily[platform_conv_value] ), [Ad Spend] )
+		formatString: 0.00
+		displayFolder: Advertising
+
+	/// CIR (cost-income ratio) = Ad Spend / Revenue. Inverse of Blended ROAS.
+	measure CIR =
+			DIVIDE ( [Ad Spend], [Revenue] )
+		formatString: 0.0%
+		displayFolder: Advertising
+
+	/// Cost per order = Ad Spend / completed Orders (blended, all channels).
+	measure CPO =
+			DIVIDE ( [Ad Spend], [Orders] )
+		formatString: #,##0.00 €
+		displayFolder: Advertising
+
+	/// Cost per click = Ad Spend / Clicks.
+	measure CPC =
+			DIVIDE ( [Ad Spend], SUM ( fact_ads_daily[clicks] ) )
+		formatString: #,##0.00 €
+		displayFolder: Advertising
+
+	/// Click-through rate = Clicks / Impressions.
+	measure CTR =
+			DIVIDE ( SUM ( fact_ads_daily[clicks] ), SUM ( fact_ads_daily[impressions] ) )
+		formatString: 0.0%
+		displayFolder: Advertising
+
+	/// Ads conversion rate = platform-reported conversions / Clicks.
+	measure 'Ads CVR' =
+			DIVIDE ( SUM ( fact_ads_daily[platform_conversions] ), SUM ( fact_ads_daily[clicks] ) )
+		formatString: 0.0%
+		displayFolder: Advertising
+
+	/// Distinct customers with at least one completed order.
+	measure Customers =
+			CALCULATE ( DISTINCTCOUNT ( fact_order_line[customer_key] ), fact_order_line[status] = "completed" )
+		formatString: #,##0
+		displayFolder: Customers
+
+	/// Customers whose FIRST order falls in the selected dates (uses the inactive dim_customer[first_date_key] -> dim_date[date_key]).
+	measure 'New Customers' =
+			CALCULATE (
+				COUNTROWS ( dim_customer ),
+				USERELATIONSHIP ( dim_customer[first_date_key], dim_date[date_key] )
+			)
+		formatString: #,##0
+		displayFolder: Customers
+
+	/// Blended CAC = total Ad Spend / New Customers (all ads, all new customers), dates matched by first-order date.
+	measure CAC =
+			DIVIDE (
+				[Ad Spend],
+				CALCULATE (
+					COUNTROWS ( dim_customer ),
+					USERELATIONSHIP ( dim_customer[first_date_key], dim_date[date_key] )
+				)
+			)
+		formatString: #,##0.00 €
+		displayFolder: Customers
+
+	/// Share of customers with 2 or more completed orders.
+	measure 'Repeat Rate' =
+			VAR RepeatCustomers =
+				SUMX (
+					VALUES ( fact_order_line[customer_key] ),
+					IF (
+						CALCULATE ( DISTINCTCOUNT ( fact_order_line[order_id] ), fact_order_line[status] = "completed" ) >= 2,
+						1,
+						0
+					)
+				)
+			RETURN
+				DIVIDE ( RepeatCustomers, [Customers] )
+		formatString: 0.0%
+		displayFolder: Customers
+
+	/// Cohort retention: active customers in the cell / customers active in month 0 of the cohort. Use first_month x months_since_first.
+	measure 'Retention %' =
+			VAR CohortBase =
+				CALCULATE (
+					DISTINCTCOUNT ( fact_order_line[customer_key] ),
+					fact_order_line[months_since_first] = 0,
+					fact_order_line[status] = "completed"
+				)
+			RETURN
+				DIVIDE (
+					CALCULATE ( DISTINCTCOUNT ( fact_order_line[customer_key] ), fact_order_line[status] = "completed" ),
+					CohortBase
+				)
+		formatString: 0.0%
+		displayFolder: Customers
+
+	/// Revenue of the previous month (needs dim_date marked as date table; use on a date/month axis).
+	measure 'Revenue PM' =
+			CALCULATE ( [Revenue], DATEADD ( dim_date[full_date], -1, MONTH ) )
+		formatString: € #,##0
+		displayFolder: Time and events
+
+	/// Month-over-month change in Revenue.
+	measure 'Revenue MoM %' =
+			DIVIDE ( [Revenue] - [Revenue PM], [Revenue PM] )
+		formatString: 0.0%
+		displayFolder: Time and events
+
+	/// Average daily revenue on sale-event days vs normal days, minus 1 (event_name from calendar_events; blank = normal day).
+	measure 'Event Day Uplift' =
+			VAR EventAvg =
+				CALCULATE (
+					AVERAGEX ( VALUES ( dim_date[full_date] ), [Revenue] ),
+					NOT ( ISBLANK ( dim_date[event_name] ) )
+				)
+			VAR NormalAvg =
+				CALCULATE (
+					AVERAGEX ( VALUES ( dim_date[full_date] ), [Revenue] ),
+					ISBLANK ( dim_date[event_name] )
+				)
+			RETURN
+				DIVIDE ( EventAvg, NormalAvg ) - 1
+		formatString: 0.0%
+		displayFolder: Time and events
+
+	/// Revenue only on event days (blank otherwise): add as a column series behind the daily line to mark sale periods.
+	measure 'Event Revenue Marker' =
+			IF ( NOT ISBLANK ( SELECTEDVALUE ( dim_date[event_name] ) ), [Revenue] )
+		formatString: € #,##0
+		displayFolder: Time and events
+
+	/// Signed value per waterfall step (revenue positive, costs negative). Power BI adds the final "Total" bar = Net Profit.
+	measure 'Waterfall Value' =
+			SWITCH (
+				SELECTEDVALUE ( waterfall_steps[Step] ),
+				"Revenue", [Revenue],
+				"Platform fee", -[Platform Fee],
+				"COGS", -[COGS],
+				"Ad spend", -[Ad Spend]
+			)
+		formatString: € #,##0
+		displayFolder: Helpers
+
+	partition _Measures = calculated
+		mode: import
+		source = ROW ( "Dummy", 1 )
+
+	annotation TODO_verify = calculated-table partition syntax (source = expression on one line) not tested

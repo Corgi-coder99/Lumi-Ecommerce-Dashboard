@@ -1,0 +1,68 @@
+table fact_ads_daily
+
+	column ad_id
+		dataType: int64
+		formatString: 0
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: ad_id
+
+	column date_key
+		dataType: int64
+		formatString: 0
+		isHidden
+		summarizeBy: none
+		sourceColumn: date_key
+
+	column channel
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: channel
+
+	column campaign
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: campaign
+
+	column spend
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: spend
+
+	column impressions
+		dataType: int64
+		formatString: #,##0
+		summarizeBy: none
+		sourceColumn: impressions
+
+	column clicks
+		dataType: int64
+		formatString: #,##0
+		summarizeBy: none
+		sourceColumn: clicks
+
+	column platform_conversions
+		dataType: int64
+		formatString: #,##0
+		summarizeBy: none
+		sourceColumn: platform_conversions
+
+	column platform_conv_value
+		dataType: decimal
+		formatString: #,##0.00 €
+		summarizeBy: none
+		sourceColumn: platform_conv_value
+
+	partition fact_ads_daily = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="fact_ads_daily"]}[Data]
+				in
+					Data
+

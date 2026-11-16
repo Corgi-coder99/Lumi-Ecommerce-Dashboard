@@ -1,0 +1,22 @@
+table dim_campaign
+
+	column campaign
+		dataType: string
+		isKey
+		summarizeBy: none
+		sourceColumn: campaign
+
+	column channel
+		dataType: string
+		summarizeBy: none
+		sourceColumn: channel
+
+	partition dim_campaign = m
+		mode: import
+		source =
+				let
+					Source = MySQL.Database("127.0.0.1", "lumi_dw"),
+					Data = Source{[Schema="lumi_dw", Item="dim_campaign"]}[Data]
+				in
+					Data
+
