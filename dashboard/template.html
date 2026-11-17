@@ -53,6 +53,8 @@ svg:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .pop,.pop.right{left:0;right:0;min-width:0}
   .page-head .btn{padding:5px 9px}
 }
+@media (max-width:480px){#camptable th:nth-child(3),#camptable td:nth-child(3){display:none}}
+@media (max-width:640px){#camptable th,#camptable td{padding:8px 5px;font-size:12px}#camptable th:nth-child(2),#camptable td:nth-child(2),#camptable th:nth-child(4),#camptable td:nth-child(4),#camptable th:nth-child(5),#camptable td:nth-child(5),#camptable th:nth-child(6),#camptable td:nth-child(6),#losstable th:nth-child(2),#losstable td:nth-child(2),#losstable th:nth-child(3),#losstable td:nth-child(3){display:none}}
 </style>
 </head>
 <body>
@@ -658,6 +660,15 @@ function init() {
   route();
 }
 init();
+
+/* touch: a tap shows the tooltip of the tapped mark (pointermove does not fire on a plain tap); a tap elsewhere hides it */
+document.addEventListener("pointerdown", e => {
+  if (e.pointerType !== "touch") return;
+  const t = document.getElementById("tip");
+  if (e.target && e.target.closest && e.target.closest("svg")) {
+    e.target.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: e.clientX, clientY: e.clientY, pointerType: "touch" }));
+  } else if (t) { t.style.display = "none"; }
+}, { passive: true });
 </script>
 </body>
 </html>
